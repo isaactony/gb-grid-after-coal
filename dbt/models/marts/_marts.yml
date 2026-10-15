@@ -1,0 +1,77 @@
+version: 2
+
+models:
+  - name: dim_date
+    columns:
+      - name: date_day
+        data_tests: [unique, not_null]
+  - name: dim_fuel_type
+    columns:
+      - name: fuel_type_code
+        data_tests: [unique, not_null]
+  - name: dim_region
+    columns:
+      - name: region_id
+        data_tests: [unique, not_null]
+      - name: region_type
+        data_tests: [not_null]
+
+  - name: fct_generation_by_fuel
+    description: Generation by Elexon fuel type per half hour (MW average and MWh).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [half_hour_start_utc, fuel_type_code]
+    columns:
+      - name: fuel_type_code
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_fuel_type'), field: fuel_type_code}
+
+  - name: fct_grid_half_hourly
+    description: >
+      One row per half hour since 2017: transmission generation by fuel group (MW), demand,
+      APX wholesale price, national carbon intensity and the Carbon Intensity generation mix.
+      Note: `*_mw` columns come from Elexon FUELHH and exclude embedded (rooftop/small-scale)
+      solar and wind; `mix_*_pct` columns come from Carbon Intensity and include estimates for them.
+    columns:
+      - name: half_hour_start_utc
+        data_tests: [unique, not_null]
+      - name: price_gbp_per_mwh
+        description: APX Market Index price, £/MWh. Zero-volume provider rows are excluded.
+
+  - name: fct_regional_carbon_intensity
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [half_hour_start_utc, region_id]
+    columns:
+      - name: region_id
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_region'), field: region_id}
+
+  - name: mart_grid_daily
+    description: Daily energy (GWh) by fuel group, fuel shares, price range and average carbon intensity.
+    columns:
+      - name: settlement_date
+        data_tests: [unique, not_null]
+
+  - name: mart_price_by_wind_share
+    description: Average and median wholesale price by wind share band and year.
+
+  - name: mart_charging_windows
+    description: Average forecast intensity by region, month and local hour; `cleanest_rank` = 1 is the cleanest hour.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [region_id, month_start, local_hour]
+
+  - name: mart_data_quality_daily
+    description: Per-day completeness of each source against the expected number of settlement periods.
+    columns:
+      - name: settlement_date
+        data_tests: [unique, not_null]
+
+  - name: mart_ingestion_log
+    description: Loader activity per source per day.

@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Untouched API responses, landed append-only by `python -m ingest`.
+    schema: raw
+    tables:
+      - name: api_responses
+        description: One row per API request window. `payload` holds the response body exactly as received.
+        loaded_at_field: fetched_at
+        freshness:
+          warn_after: {count: 2, period: day}
+          error_after: {count: 7, period: day}
+        columns:
+          - name: response_id
+            data_tests: [unique, not_null]
+          - name: source
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [elexon_fuelhh, elexon_demand_outturn, elexon_market_index,
+                             carbon_national_intensity, carbon_national_generation, carbon_regional]

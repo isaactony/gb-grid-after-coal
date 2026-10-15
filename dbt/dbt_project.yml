@@ -1,0 +1,39 @@
+name: gb_grid
+version: "1.0.0"
+profile: gb_grid
+config-version: 2
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Everything before this is outside the period both publishers cover.
+  start_date: "2017-01-01"
+  # Incremental models re-process this many days so late Elexon revisions are picked up.
+  incremental_lookback_days: 7
+
+models:
+  gb_grid:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+      +grants:
+        select: ["metabase_reader"]
+
+seeds:
+  gb_grid:
+    +schema: reference
+    fuel_types:
+      +column_types: {is_interconnector: boolean, is_fossil: boolean, is_low_carbon: boolean}
+    grid_events:
+      +column_types: {event_date: date}

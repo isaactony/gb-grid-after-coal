@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+logs/
+.DS_Store
+dbt/.user.yml

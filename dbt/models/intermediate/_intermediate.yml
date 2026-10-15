@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: int_half_hours
+    description: Half-hour spine with UTC and Europe/London time, settlement date and settlement period (1–46/48/50).
+    columns:
+      - name: half_hour_start_utc
+        data_tests: [unique, not_null]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [settlement_date, settlement_period]

@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" width="1200" height="440" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5B6573"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="440" fill="#FFFFFF"/>
+
+  <!-- Sources -->
+  <text x="40" y="44" font-size="15" font-weight="700" fill="#5B6573" letter-spacing="1">SOURCES</text>
+  <rect x="40" y="64" width="210" height="110" rx="10" fill="#FFF4E0" stroke="#E8A33D" stroke-width="1.5"/>
+  <text x="58" y="96" font-size="17" font-weight="700" fill="#2B2F36">Elexon BMRS</text>
+  <text x="58" y="122" font-size="14" fill="#4A515C">Generation by fuel</text>
+  <text x="58" y="142" font-size="14" fill="#4A515C">Demand · Market price</text>
+  <text x="58" y="162" font-size="13" fill="#8A929E">7-day request windows</text>
+
+  <rect x="40" y="200" width="210" height="110" rx="10" fill="#E6F4EA" stroke="#2E9E5B" stroke-width="1.5"/>
+  <text x="58" y="232" font-size="17" font-weight="700" fill="#2B2F36">Carbon Intensity API</text>
+  <text x="58" y="258" font-size="14" fill="#4A515C">National intensity + mix</text>
+  <text x="58" y="278" font-size="14" fill="#4A515C">14 regions, nested JSON</text>
+  <text x="58" y="298" font-size="13" fill="#8A929E">13–30-day request windows</text>
+
+  <!-- Loader -->
+  <rect x="300" y="132" width="150" height="110" rx="10" fill="#F2F4F7" stroke="#8A929E" stroke-width="1.5"/>
+  <text x="318" y="166" font-size="17" font-weight="700" fill="#2B2F36">python -m</text>
+  <text x="318" y="188" font-size="17" font-weight="700" fill="#2B2F36">ingest</text>
+  <text x="318" y="212" font-size="13" fill="#4A515C">idempotent, retries,</text>
+  <text x="318" y="230" font-size="13" fill="#4A515C">re-fetches last 7 days</text>
+  <line x1="252" y1="119" x2="296" y2="168" stroke="#5B6573" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <line x1="252" y1="255" x2="296" y2="208" stroke="#5B6573" stroke-width="1.8" marker-end="url(#arrow)"/>
+
+  <!-- Warehouse -->
+  <rect x="490" y="30" width="470" height="380" rx="14" fill="#F7F9FC" stroke="#3FA7D6" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="510" y="58" font-size="15" font-weight="700" fill="#2F6F9F" letter-spacing="1">POSTGRES 16 WAREHOUSE (DOCKER)  ·  dbt</text>
+
+  <rect x="510" y="78" width="430" height="58" rx="8" fill="#FFFFFF" stroke="#B9C2CE"/>
+  <text x="526" y="102" font-size="15" font-weight="700" fill="#2B2F36">raw.api_responses</text>
+  <text x="526" y="123" font-size="13" fill="#4A515C">append-only · one row per request · body kept as JSONB</text>
+
+  <rect x="510" y="150" width="430" height="58" rx="8" fill="#FFFFFF" stroke="#B9C2CE"/>
+  <text x="526" y="174" font-size="15" font-weight="700" fill="#2B2F36">staging</text>
+  <text x="526" y="195" font-size="13" fill="#4A515C">unnest · type · dedupe revisions · incremental for the big two</text>
+
+  <rect x="510" y="222" width="430" height="58" rx="8" fill="#FFFFFF" stroke="#B9C2CE"/>
+  <text x="526" y="246" font-size="15" font-weight="700" fill="#2B2F36">intermediate</text>
+  <text x="526" y="267" font-size="13" fill="#4A515C">half-hour spine (UTC + Europe/London, 46/48/50 periods)</text>
+
+  <rect x="510" y="294" width="430" height="98" rx="8" fill="#FFFFFF" stroke="#B9C2CE"/>
+  <text x="526" y="318" font-size="15" font-weight="700" fill="#2B2F36">marts</text>
+  <text x="526" y="339" font-size="13" fill="#4A515C">core: fct_grid_half_hourly · fct_regional · dims</text>
+  <text x="526" y="358" font-size="13" fill="#4A515C">analytics: daily · price by wind · charging windows</text>
+  <text x="526" y="377" font-size="13" fill="#4A515C">monitoring: completeness per source · loader log</text>
+
+  <line x1="725" y1="137" x2="725" y2="147" stroke="#5B6573" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <line x1="725" y1="209" x2="725" y2="219" stroke="#5B6573" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <line x1="725" y1="281" x2="725" y2="291" stroke="#5B6573" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <line x1="452" y1="160" x2="506" y2="110" stroke="#5B6573" stroke-width="1.8" marker-end="url(#arrow)"/>
+
+  <!-- Tests badge -->
+  <rect x="790" y="230" width="0" height="0"/>
+
+  <!-- Metabase -->
+  <rect x="1000" y="250" width="170" height="142" rx="10" fill="#EEF0FB" stroke="#7172AD" stroke-width="1.5"/>
+  <text x="1018" y="282" font-size="17" font-weight="700" fill="#2B2F36">Metabase</text>
+  <text x="1018" y="306" font-size="13" fill="#4A515C">4 dashboards,</text>
+  <text x="1018" y="325" font-size="13" fill="#4A515C">27 questions</text>
+  <text x="1018" y="349" font-size="13" fill="#4A515C">defined in YAML,</text>
+  <text x="1018" y="368" font-size="13" fill="#4A515C">deployed via API</text>
+  <line x1="942" y1="343" x2="996" y2="323" stroke="#5B6573" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="1000" y="414" font-size="12" fill="#8A929E">read-only role, marts only</text>
+
+  <!-- Tests -->
+  <rect x="1000" y="78" width="170" height="130" rx="10" fill="#FDEBEC" stroke="#D1495B" stroke-width="1.5"/>
+  <text x="1018" y="110" font-size="17" font-weight="700" fill="#2B2F36">dbt tests</text>
+  <text x="1018" y="134" font-size="13" fill="#4A515C">46 tests</text>
+  <text x="1018" y="153" font-size="13" fill="#4A515C">clock changes,</text>
+  <text x="1018" y="172" font-size="13" fill="#4A515C">alignment, ranges,</text>
+  <text x="1018" y="191" font-size="13" fill="#4A515C">completeness (warn)</text>
+  <line x1="996" y1="143" x2="944" y2="178" stroke="#D1495B" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+</svg>

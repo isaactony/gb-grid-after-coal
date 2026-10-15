@@ -1,0 +1,83 @@
+version: 2
+
+models:
+  - name: stg_elexon__generation_by_fuel
+    description: >
+      Elexon FUELHH, one row per settlement period per fuel type, latest publication wins.
+      Incremental: only API responses not yet processed are unnested on each run.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [settlement_date, settlement_period, fuel_type_code]
+    columns:
+      - name: fuel_type_code
+        description: Elexon fuel type. New codes (e.g. a new interconnector) fail the relationship test until added to the `fuel_types` seed.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fuel_types')
+                field: fuel_type_code
+      - name: settlement_period
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 1, max_value: 50}
+      - name: generation_mw
+        data_tests: [not_null]
+
+  - name: stg_elexon__demand_outturn
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [settlement_date, settlement_period]
+    columns:
+      - name: national_demand_mw
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 5000, max_value: 70000}
+              config: {severity: warn}
+
+  - name: stg_elexon__market_index
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [settlement_date, settlement_period, data_provider]
+    columns:
+      - name: data_provider
+        data_tests:
+          - accepted_values:
+              arguments: {values: [APXMIDP, N2EXMIDP]}
+      - name: price_gbp_per_mwh
+        description: £/MWh. Can be negative when wind output exceeds demand.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: -500, max_value: 5000}
+              config: {severity: warn}
+
+  - name: stg_carbon_intensity__national_intensity
+    columns:
+      - name: half_hour_start_utc
+        data_tests: [unique, not_null]
+      - name: forecast_gco2_per_kwh
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1000}
+
+  - name: stg_carbon_intensity__national_generation_mix
+    columns:
+      - name: half_hour_start_utc
+        data_tests: [unique, not_null]
+
+  - name: stg_carbon_intensity__regional_intensity
+    description: Regional forecast intensity and mix, flattened from two levels of nested JSON. Incremental.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [half_hour_start_utc, region_id]
+    columns:
+      - name: region_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('carbon_regions')
+                field: region_id

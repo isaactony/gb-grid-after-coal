@@ -1,0 +1,508 @@
+# Metabase dashboards as code. Deployed by `python metabase/deploy.py` (see README).
+# Every question is native SQL against the `marts` schema. Layout is [col, row, width, height]
+# on Metabase's 24-column grid. Re-deploying updates questions in place (matched by name).
+
+collection: GB grid after coal
+
+colors: &fuel_colors
+  Coal: "#3D3D3D"
+  Gas: "#E8A33D"
+  Nuclear: "#9B6FD0"
+  Wind: "#3FA7D6"
+  Biomass: "#6BA368"
+  Hydro: "#2F6F9F"
+  Net imports: "#A8A8A8"
+  Other: "#D6D6D6"
+
+dashboards:
+
+  # ---------------------------------------------------------------------------------------
+  - name: 1 · Britain after coal
+    description: "How Great Britain's electricity supply changed between 2017 and the closure of its last coal power station (30 Sep 2024) and after. Source: Elexon FUELHH and Carbon Intensity API."
+    cards:
+      - name: Coal share, 2017
+        display: scalar
+        layout: [0, 0, 6, 3]
+        viz: {scalar.suffix: "%"}
+        sql: |
+          select round(100 * sum(coal_gwh) / sum(total_supply_gwh), 1) as coal_share_pct
+          from marts.mart_grid_daily
+          where year = 2017
+
+      - name: Coal share, past year
+        description: Last 12 months.
+        display: scalar
+        layout: [6, 0, 6, 3]
+        viz: {scalar.suffix: "%"}
+        sql: |
+          select round(100 * sum(coal_gwh) / sum(total_supply_gwh), 1) as coal_share_pct
+          from marts.mart_grid_daily
+          where settlement_date >= current_date - 365 and settlement_date < current_date
+
+      - name: Wind share, past year
+        description: Last 12 months.
+        display: scalar
+        layout: [12, 0, 6, 3]
+        viz: {scalar.suffix: "%"}
+        sql: |
+          select round(100 * sum(wind_gwh) / sum(total_supply_gwh), 1) as wind_share_pct
+          from marts.mart_grid_daily
+          where settlement_date >= current_date - 365 and settlement_date < current_date
+
+      - name: Carbon intensity, past year
+        description: Average gCO2 per kWh of electricity over the last 12 months (2017 average 288).
+        display: scalar
+        layout: [18, 0, 6, 3]
+        viz: {scalar.suffix: " g/kWh"}
+        sql: |
+          select round(avg(avg_gco2_per_kwh)) as gco2_per_kwh
+          from marts.mart_grid_daily
+          where settlement_date >= current_date - 365 and settlement_date < current_date
+
+      - name: Monthly electricity supply by source (TWh)
+        description: Transmission-metered generation plus net interconnector imports. Excludes rooftop and other embedded solar.
+        display: bar
+        layout: [0, 3, 24, 8]
+        viz:
+          graph.dimensions: [month, source]
+          graph.metrics: [twh]
+          stackable.stack_type: stacked
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: TWh
+          series_colors: *fuel_colors
+        sql: |
+          select
+              d.month_start as month,
+              s.source,
+              round(sum(s.gwh) / 1000, 2) as twh
+          from marts.mart_grid_daily as d
+          cross join lateral (values
+              ('Coal', d.coal_gwh), ('Gas', d.gas_gwh), ('Nuclear', d.nuclear_gwh),
+              ('Wind', d.wind_gwh), ('Biomass', d.biomass_gwh), ('Hydro', d.hydro_gwh),
+              ('Net imports', d.imports_gwh),
+              ('Other', coalesce(d.other_gwh, 0) + coalesce(d.other_fossil_gwh, 0) + coalesce(d.storage_gwh, 0))
+          ) as s (source, gwh)
+          where d.month_start < date_trunc('month', current_date)
+          group by 1, 2
+          order by 1, 2
+
+      - name: Coal-free days per year
+        description: Days on which no coal generation was recorded in any half hour. The current year is partial.
+        display: bar
+        layout: [0, 11, 8, 6]
+        viz:
+          graph.dimensions: [year]
+          graph.metrics: [coal_free_days]
+          graph.show_values: true
+          graph.x_axis.scale: ordinal
+          graph.y_axis.title_text: Days
+          graph.x_axis.title_text: ""
+        sql: |
+          select year::text as year, count(*) filter (where is_coal_free_day) as coal_free_days
+          from marts.mart_grid_daily
+          group by 1
+          order by 1
+
+      - name: Carbon intensity and wind share by year
+        display: combo
+        layout: [8, 11, 8, 6]
+        viz:
+          graph.dimensions: [year]
+          graph.metrics: [avg_gco2_per_kwh, wind_share_pct]
+          graph.x_axis.scale: ordinal
+          graph.x_axis.title_text: ""
+          series_settings:
+            avg_gco2_per_kwh: {display: bar, title: Carbon intensity (g/kWh)}
+            wind_share_pct: {display: line, axis: right, title: Wind share (%)}
+        sql: |
+          select
+              year::text as year,
+              round(avg(avg_gco2_per_kwh)) as avg_gco2_per_kwh,
+              round(100 * sum(wind_gwh) / sum(total_supply_gwh), 1) as wind_share_pct
+          from marts.mart_grid_daily
+          group by 1
+          order by 1
+
+      - name: Net interconnector imports by year (TWh)
+        description: Negative means Britain exported more than it imported — as in 2022, when much of France's nuclear fleet was offline.
+        display: bar
+        layout: [16, 11, 8, 6]
+        viz:
+          graph.dimensions: [year]
+          graph.metrics: [net_imports_twh]
+          graph.show_values: true
+          graph.x_axis.scale: ordinal
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: TWh
+        sql: |
+          select year::text as year, round(sum(imports_gwh) / 1000, 1) as net_imports_twh
+          from marts.mart_grid_daily
+          group by 1
+          order by 1
+
+      - text: |
+          ### What changed
+          - **Coal went from 7.6% of supply in 2017 to zero.** Britain's last coal plant, Ratcliffe-on-Soar, closed on 30 September 2024.
+          - **Wind replaced coal.** Between 2017 and 2019 coal output fell by about 15 TWh while wind rose by about 14 TWh and gas barely moved. After 2022, more wind and more imports cut gas generation by about a third.
+          - **Carbon intensity has more than halved** since 2017.
+          - **2022 was the exception:** Britain became a net *exporter*, sending power to France while French nuclear output was low.
+
+          *Data: Elexon FUELHH (transmission-metered generation) and the Carbon Intensity API. Embedded rooftop solar is not in the TWh figures.*
+        layout: [0, 17, 24, 5]
+
+  # ---------------------------------------------------------------------------------------
+  - name: 2 · Wind and wholesale price
+    description: How the short-term wholesale electricity price (APX Market Index, £/MWh) moves with wind output.
+    parameters:
+      - {name: Year, slug: year, type: number/=, default: 2025}
+    cards:
+      - name: Average price by wind share of supply
+        description: Half hours grouped by how much of supply came from wind, for the selected year.
+        display: bar
+        layout: [0, 0, 12, 7]
+        params: {year: year}
+        viz:
+          graph.dimensions: [wind_share_band]
+          graph.metrics: [avg_price_gbp_per_mwh]
+          graph.show_values: true
+          graph.x_axis.title_text: Wind share of supply
+          graph.y_axis.title_text: £/MWh
+        sql: |
+          select wind_share_band, avg_price_gbp_per_mwh, half_hours
+          from marts.mart_price_by_wind_share
+          where year = {{year}}
+          order by wind_share_band_start_pct
+        tags: {year: {type: number, display-name: Year, default: "2025", required: true}}
+
+      - name: Wind share vs price, every year
+        description: The same relationship for each year. 2022 sits far above the rest because gas set the price during the energy crisis.
+        display: line
+        layout: [12, 0, 12, 7]
+        viz:
+          graph.dimensions: [wind_share_band, year]
+          graph.metrics: [avg_price_gbp_per_mwh]
+          graph.x_axis.title_text: Wind share of supply
+          graph.y_axis.title_text: £/MWh
+        sql: |
+          select wind_share_band, year::text as year, avg_price_gbp_per_mwh
+          from marts.mart_price_by_wind_share
+          where half_hours >= 50
+          order by wind_share_band_start_pct, year
+
+      - name: Monthly average wholesale price (£/MWh)
+        display: line
+        layout: [0, 7, 16, 6]
+        viz:
+          graph.dimensions: [month]
+          graph.metrics: [avg_price_gbp_per_mwh]
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: £/MWh
+        sql: |
+          select month_start as month, round(avg(avg_price_gbp_per_mwh), 2) as avg_price_gbp_per_mwh
+          from marts.mart_grid_daily
+          where month_start < date_trunc('month', current_date)
+          group by 1
+          order by 1
+
+      - name: Half hours with a negative price
+        description: Periods where generators paid to keep running — almost always windy, low-demand nights.
+        display: bar
+        layout: [16, 7, 8, 6]
+        viz:
+          graph.dimensions: [year]
+          graph.metrics: [negative_price_half_hours]
+          graph.show_values: true
+          graph.x_axis.scale: ordinal
+          graph.x_axis.title_text: ""
+        sql: |
+          select year::text as year, sum(negative_price_periods) as negative_price_half_hours
+          from marts.mart_grid_daily
+          group by 1
+          order by 1
+
+      - name: Daily wind share vs average price
+        description: One dot per day in the selected year.
+        display: scatter
+        layout: [0, 13, 12, 7]
+        params: {year: year}
+        viz:
+          graph.dimensions: [wind_share_pct]
+          graph.metrics: [avg_price_gbp_per_mwh]
+          graph.x_axis.title_text: Wind share of supply (%)
+          graph.y_axis.title_text: Average price (£/MWh)
+        sql: |
+          select wind_share_pct, round(avg_price_gbp_per_mwh, 2) as avg_price_gbp_per_mwh
+          from marts.mart_grid_daily
+          where year = {{year}} and avg_price_gbp_per_mwh is not null
+        tags: {year: {type: number, display-name: Year, default: "2025", required: true}}
+
+      - name: Most expensive days
+        display: table
+        layout: [12, 13, 12, 7]
+        sql: |
+          select
+              settlement_date as "Day",
+              round(avg_price_gbp_per_mwh) as "Avg price (£/MWh)",
+              round(max_price_gbp_per_mwh) as "Peak price (£/MWh)",
+              wind_share_pct as "Wind share (%)",
+              gas_share_pct as "Gas share (%)"
+          from marts.mart_grid_daily
+          where avg_price_gbp_per_mwh is not null
+          order by avg_price_gbp_per_mwh desc
+          limit 15
+
+  # ---------------------------------------------------------------------------------------
+  - name: 3 · When to charge — cleanest hours by region
+    description: Forecast carbon intensity by local hour of day for each Carbon Intensity region. Lower is cleaner.
+    parameters:
+      - name: Region
+        slug: region
+        type: string/=
+        default: GB
+        values: [GB, England, Scotland, Wales, North Scotland, South Scotland, North West England,
+                 North East England, Yorkshire, North Wales & Merseyside, South Wales, West Midlands,
+                 East Midlands, East England, South West England, South England, London, South East England]
+    cards:
+      - name: Carbon intensity by hour of day, last 12 months
+        description: Average forecast gCO2/kWh by local hour for the selected region, split by season.
+        display: line
+        layout: [0, 0, 12, 8]
+        params: {region: region}
+        viz:
+          graph.dimensions: [local_hour, season]
+          graph.metrics: [avg_gco2_per_kwh]
+          graph.x_axis.title_text: Local hour (UK time)
+          graph.y_axis.title_text: gCO2/kWh
+          graph.x_axis.scale: ordinal
+        sql: |
+          select
+              f.local_hour,
+              case when extract(month from f.settlement_date) in (12, 1, 2) then '1 Winter'
+                   when extract(month from f.settlement_date) in (3, 4, 5) then '2 Spring'
+                   when extract(month from f.settlement_date) in (6, 7, 8) then '3 Summer'
+                   else '4 Autumn' end as season,
+              round(avg(f.forecast_gco2_per_kwh)) as avg_gco2_per_kwh
+          from marts.fct_regional_carbon_intensity as f
+          join marts.dim_region as r using (region_id)
+          where r.region_name = {{region}}
+            and f.settlement_date >= current_date - 365
+          group by 1, 2
+          order by 1, 2
+        tags: {region: {type: text, display-name: Region, default: GB, required: true}}
+
+      - name: Cleanest and dirtiest hour, by region
+        description: Last 12 months. "Saving" is how much lower intensity is at the cleanest hour than at the dirtiest.
+        display: table
+        layout: [12, 0, 12, 8]
+        sql: |
+          with hourly as (
+              select r.region_name, r.region_type, f.local_hour, avg(f.forecast_gco2_per_kwh) as g
+              from marts.fct_regional_carbon_intensity as f
+              join marts.dim_region as r using (region_id)
+              where f.settlement_date >= current_date - 365
+              group by 1, 2, 3
+          ),
+          ranked as (
+              select *,
+                     row_number() over (partition by region_name order by g) as clean_rank,
+                     row_number() over (partition by region_name order by g desc) as dirty_rank
+              from hourly
+          )
+          select
+              c.region_name as "Region",
+              lpad(c.local_hour::text, 2, '0') || ':00' as "Cleanest hour",
+              round(c.g) as "g/kWh at cleanest",
+              lpad(d.local_hour::text, 2, '0') || ':00' as "Dirtiest hour",
+              round(d.g) as "g/kWh at dirtiest",
+              round(100 * (1 - c.g / nullif(d.g, 0))) || '%' as "Saving"
+          from ranked as c
+          join ranked as d on d.region_name = c.region_name and d.dirty_rank = 1
+          where c.clean_rank = 1
+          order by c.g
+
+      - name: Average carbon intensity by region, last 12 months
+        display: row
+        layout: [0, 8, 10, 9]
+        viz:
+          graph.dimensions: [region]
+          graph.metrics: [avg_gco2_per_kwh]
+          graph.show_values: true
+          graph.y_axis.title_text: gCO2/kWh
+        sql: |
+          select r.region_name as region, round(avg(f.forecast_gco2_per_kwh)) as avg_gco2_per_kwh
+          from marts.fct_regional_carbon_intensity as f
+          join marts.dim_region as r using (region_id)
+          where r.region_type = 'Distribution region'
+            and f.settlement_date >= current_date - 365
+          group by 1
+          order by 2
+
+      - name: How the daily profile has changed (selected region)
+        description: Average intensity by hour in each full year. Watch the midday dip deepen as solar grows.
+        display: line
+        layout: [10, 8, 14, 9]
+        params: {region: region}
+        viz:
+          graph.dimensions: [local_hour, year]
+          graph.metrics: [avg_gco2_per_kwh]
+          graph.x_axis.title_text: Local hour (UK time)
+          graph.y_axis.title_text: gCO2/kWh
+          graph.x_axis.scale: ordinal
+        sql: |
+          select f.local_hour, extract(year from f.settlement_date)::int::text as year,
+                 round(avg(f.forecast_gco2_per_kwh)) as avg_gco2_per_kwh
+          from marts.fct_regional_carbon_intensity as f
+          join marts.dim_region as r using (region_id)
+          where r.region_name = {{region}}
+            and extract(year from f.settlement_date) in (2019, 2022, 2025)
+          group by 1, 2
+          order by 1, 2
+        tags: {region: {type: text, display-name: Region, default: GB, required: true}}
+
+      - name: Hour-by-region heatmap (gCO2/kWh, last 12 months)
+        description: Columns are local hours (00 = midnight to 01:00).
+        display: table
+        layout: [0, 17, 24, 13]
+        heatmap_columns: ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23"]
+        sql: |
+          select
+              r.region_name as "Region",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 0)) as "00",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 1)) as "01",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 2)) as "02",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 3)) as "03",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 4)) as "04",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 5)) as "05",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 6)) as "06",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 7)) as "07",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 8)) as "08",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 9)) as "09",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 10)) as "10",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 11)) as "11",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 12)) as "12",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 13)) as "13",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 14)) as "14",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 15)) as "15",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 16)) as "16",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 17)) as "17",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 18)) as "18",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 19)) as "19",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 20)) as "20",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 21)) as "21",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 22)) as "22",
+              round(avg(f.forecast_gco2_per_kwh) filter (where f.local_hour = 23)) as "23"
+          from marts.fct_regional_carbon_intensity as f
+          join marts.dim_region as r using (region_id)
+          where f.settlement_date >= current_date - 365
+          group by r.region_id, r.region_name
+          order by r.region_id
+
+  # ---------------------------------------------------------------------------------------
+  - name: 4 · Data quality and pipeline health
+    description: Completeness of every source against the expected number of settlement periods, known upstream issues, and loader activity.
+    cards:
+      - name: Half hours modelled
+        display: scalar
+        layout: [0, 0, 6, 3]
+        sql: select count(*) as half_hours from marts.fct_grid_half_hourly
+
+      - name: Days under 95% complete
+        description: Complete days only, from each source's first available date.
+        display: scalar
+        layout: [6, 0, 6, 3]
+        sql: |
+          select count(*) as days
+          from marts.mart_data_quality_daily
+          where settlement_date < current_date - 1
+            and (generation_completeness_pct < 95 or demand_completeness_pct < 95
+                 or (settlement_date >= '2017-09-27' and national_intensity_completeness_pct < 95))
+
+      - name: Price rows excluded
+        description: N2EX rows report a price of 0 with no traded volume, so they are not used.
+        display: scalar
+        layout: [12, 0, 6, 3]
+        sql: select sum(price_zero_volume_rows_excluded) as rows_excluded from marts.mart_data_quality_daily
+
+      - name: Data last fetched
+        display: scalar
+        layout: [18, 0, 6, 3]
+        sql: select to_char(max(last_fetched_at) at time zone 'Europe/London', 'DD Mon YYYY HH24:MI') as last_fetched from marts.mart_ingestion_log
+
+      - name: Monthly completeness by source (%)
+        display: line
+        layout: [0, 3, 24, 6]
+        viz:
+          graph.dimensions: [month]
+          graph.metrics: [Generation, Demand, Price, National intensity, Regional intensity]
+          graph.y_axis.auto_split: false
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: "% of expected half hours"
+          graph.y_axis.auto_range: false
+          graph.y_axis.min: 0
+          graph.y_axis.max: 100
+        sql: |
+          select
+              date_trunc('month', settlement_date)::date as month,
+              round(avg(generation_completeness_pct), 1) as "Generation",
+              round(avg(demand_completeness_pct), 1) as "Demand",
+              round(avg(price_completeness_pct), 1) as "Price",
+              -- months before a source existed show as gaps, not 0%
+              nullif(round(avg(national_intensity_completeness_pct), 1), 0) as "National intensity",
+              nullif(round(avg(regional_completeness_pct), 1), 0) as "Regional intensity"
+          from marts.mart_data_quality_daily
+          where settlement_date < current_date
+          group by 1
+          order by 1
+
+      - text: |
+          ### Known upstream issues, and how they're handled
+          - **Elexon dates the last half hour of each day one day late** before 15 Jul 2022 (1,921 half hours). Settlement date and period are derived from `startTime` instead, which was verified against neighbouring periods. A warn-level dbt test tracks the count.
+          - **Clock-change days have 46 or 50 periods.** The half-hour spine is built in Europe/London time, and a dbt test checks every year's clock changes.
+          - **ElecLink was published as `INTELE` once** (10 Sep 2021). It's mapped to `INTELEC`, and a relationship test catches any new unknown fuel code.
+          - **Carbon Intensity forecast ~2,800 g/kWh** for part of Dec 2018 (actual ~170). Nulled in staging, with the raw value kept for audit.
+          - **N2EX market index rows always have zero volume.** They're excluded, and APX is used as the price.
+        layout: [0, 9, 24, 7]
+
+      - name: Days with gaps
+        display: table
+        layout: [0, 16, 14, 8]
+        sql: |
+          select
+              settlement_date as "Day",
+              expected_periods as "Expected periods",
+              generation_completeness_pct as "Generation %",
+              demand_completeness_pct as "Demand %",
+              price_completeness_pct as "Price %",
+              national_intensity_completeness_pct as "National intensity %"
+          from marts.mart_data_quality_daily
+          where settlement_date < current_date - 1
+            and (generation_completeness_pct < 95 or demand_completeness_pct < 95
+                 or (settlement_date >= '2017-09-27' and national_intensity_completeness_pct < 95))
+          order by settlement_date desc
+
+      - name: Clock-change days
+        description: 46 periods when clocks go forward, 50 when they go back.
+        display: table
+        layout: [14, 16, 10, 8]
+        sql: |
+          select settlement_date as "Day", expected_periods as "Expected", generation_periods as "Generation",
+                 demand_periods as "Demand", price_periods as "Price"
+          from marts.mart_data_quality_daily
+          where is_clock_change_day
+          order by settlement_date desc
+
+      - name: Loader activity by source
+        display: table
+        layout: [0, 24, 24, 5]
+        sql: |
+          select
+              source as "Source",
+              sum(requests) as "Requests",
+              sum(failed_requests) as "Failed",
+              sum(records) as "Records",
+              min(earliest_window) as "Data from",
+              max(latest_window) as "Data to",
+              to_char(max(last_fetched_at) at time zone 'Europe/London', 'DD Mon YYYY HH24:MI') as "Last fetched"
+          from marts.mart_ingestion_log
+          group by 1
+          order by 1
